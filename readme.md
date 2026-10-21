@@ -1,106 +1,108 @@
-# SoC - Empty
+# Sunflower
 
-The Bluetooth SoC-Empty example is a project that you can use as a template for any standalone Bluetooth application.
+**Sunflower** is a two-axis solar-tracker prototype built around the Silicon Labs **BGM220P Explorer Kit (BRD4314A)**. The current firmware controls two SG90 servos over **Bluetooth Low Energy (BLE)** using a phone controller. Automatic tracking from light sensors and harvested-power operation are future stages.
 
-> Note: This example does not include Device Firmware Update (DFU) functionality by default. For details see the [Device Firmware Update](#device-firmware-update) section.
+## Current status
 
-## Getting Started
+- **Working milestone (previous bench test):** Both servos responded to Android Uni Controller joystick buttons over BLE.
+- **Current repository:** The rebuilt `Sunflower` project compiles successfully. Reflash and retest the hardware after the project recreation.
+- **Not implemented yet:** Automatic light tracking, solar energy harvesting, battery management, or autonomous mode switching.
 
-To learn the Bluetooth technology basics, see [UG103.14: Bluetooth LE Fundamentals](https://www.silabs.com/documents/public/user-guides/ug103-14-fundamentals-ble.pdf).
+The earlier servo-sweep experiment is preserved separately in [Sunflower_Test](https://github.com/jumazer/Sunflower_Test). This repository is for the newer BLE-based firmware.
 
-To get started with Silicon Labs Bluetooth and Simplicity Studio, see [QSG169: Bluetooth SDK v3.x Quick Start Guide](https://www.silabs.com/documents/public/quick-start-guides/qsg169-bluetooth-sdk-v3x-quick-start-guide.pdf).
+## Hardware and wiring
 
-The term SoC stands for "System on Chip", meaning that this is a standalone application that runs on the EFR32/BGM and does not require any external MCU or other active components to operate.
+| Function | BGM220P pin | Peripheral | Notes |
+| --- | --- | --- | --- |
+| Pan / horizontal servo | PB4 | TIMER0 CC0 | SG90 signal wire |
+| Tilt / vertical servo | PB3 | TIMER0 CC1 | SG90 signal wire |
+| Servo power | External regulated 5 V | — | Size for both motors, including startup/stall transients |
+| Ground | Shared ground | — | Servo supply GND and BGM220P GND must be connected |
 
-As the name implies, the example is an (almost) empty template that has only the bare minimum to make a working Bluetooth application. This skeleton can be extended with the application logic.
+**Electrical caution:** Do not power both motors from a GPIO pin. Verify servo wiring and supply voltage before connecting power. Keep the mechanisms within their tested limits; a stalled servo may draw substantial current.
 
-The development of a Bluetooth applications consist of three main steps:
+## PWM and movement
 
-* Designing the GATT database
-* Responding to the events raised by the Bluetooth stack
-* Implementing additional application logic
+PWM is produced by TIMER0 at approximately **50 Hz** (20 ms period), using two independent compare channels. Values below are the **prototype's calibrated pulse limits**, not universal SG90 limits.
 
-These steps are covered in the following sections. To learn more about programming an SoC application, see [UG434: Silicon Labs Bluetooth ® C Application Developer's Guide for SDK v3.x](https://www.silabs.com/documents/public/user-guides/ug434-bluetooth-c-soc-dev-guide-sdk-v3x.pdf).
+| Axis | Initial pulse | Allowed pulse range | Joystick step |
+| --- | ---: | ---: | ---: |
+| Pan (PB4) | 1500 µs | 1000–2000 µs | 20 µs |
+| Tilt (PB3) | 750 µs | 600–900 µs | 10 µs |
 
-## Designing the GATT Database
+Movement is updated every **50 ms**. If valid controller packets stop arriving for **300 ms**, the firmware clears held buttons and stops changing the servo commands; it does **not** cut servo power or automatically return to center. On disconnect it also clears held buttons.
 
-The SOC-empty example implements a basic GATT database. GATT definitions (services/characteristics) can be extended using the GATT Configurator, which can be found under Advanced Configurators in the Software Components tab of the Project Configurator. To open the Project Configurator, open the .slcp file of the project.
+The narrow tilt range protects the current mechanical arrangement. Recalibrate before changing the mechanism.
 
-![Opening GATT Configurator](image/readme_img1.png)
+## Bluetooth interface
 
-To learn how to use the GATT Configurator, see [UG438: GATT Configurator User’s Guide for Bluetooth SDK v3.x](https://www.silabs.com/documents/public/user-guides/ug438-gatt-configurator-users-guide-sdk-v3x.pdf).
+The GATT definitions are in **`config/btconf/gatt_configuration.btconf`**. The active application logic and BLE event handler are in **`app.c`**.
 
-## Responding to Bluetooth Events
+| GATT characteristic ID | Payload | Purpose |
+| --- | --- | --- |
+| `servo1_position` | One byte, 0–100 | Set pan position directly |
+| `servo2_position` | One byte, 0–100 | Set tilt position directly |
+| `controller_cmd` | Fixed 10-byte packet | Receive Uni Controller button state |
 
-A Bluetooth application is event driven. The Bluetooth stack generates events e.g., when a remote device connects or disconnects or when it writes a characteristic in the local GATT database. The application has to handle these events in the `sl_bt_on_event()` function. The prototype of this function is implemented in *app.c*. To handle more events, the switch-case statement of this function is to be extended. For the list of Bluetooth events, see the online [Bluetooth API Reference](https://docs.silabs.com/bluetooth/latest/).
+The controller characteristic accepts writes with or without response. The firmware checks the **FA FB** header, **FE** ending, and 10-byte length; byte **6** (zero-based) contains these button flags:
 
-## Implementing Application Logic
+| Button | Mask |
+| --- | --- |
+| Up | `0x01` |
+| Down | `0x02` |
+| Left | `0x04` |
+| Right | `0x08` |
 
-Additional application logic has to be implemented in the `app_init()` and `app_process_action()` functions. Find the definitions of these functions in *app.c*. The `app_init()` function is called once when the device is booted, and `app_process_action()` is called repeatedly in a while(1) loop. For example, you can poll peripherals in this function. To save energy and to have this function called at specific intervals only, for example once every second, use the services of the [Sleeptimer](https://docs.silabs.com/gecko-platform/latest/service/api/group-sleeptimer). If you need a more sophisticated application, consider using RTOS (see [AN1260: Integrating v3.x Silicon Labs Bluetooth Applications with Real-Time Operating Systems](https://www.silabs.com/documents/public/application-notes/an1260-integrating-v3x-bluetooth-applications-with-rtos.pdf)).
+Only the four low button bits are used. The firmware does not currently validate a checksum.
 
-## Features Already Added to the SOC-Empty Application
+**Note:** The current GATT configuration still initializes the device name as **“Empty Example”**, inherited from the Silicon Labs starter project. The project itself is named Sunflower. Rename the GATT Device Name through Simplicity Studio later if desired, followed by regeneration and a new flash.
 
-The SOC-Empty application is ***almost*** empty. It implements a basic application to demonstrate how to handle events, how to use the GATT database, and how to add software components.
+## Build and flash
 
-* A simple application is implemented in the event handler function that starts advertising on boot (and on connection_closed event). This makes it possible for remote devices to find the device and connect to it.
-* A simple GATT database is defined by adding Generic Access and Device Information services. This makes it possible for remote devices to read out some basic information such as the device name.
-* The OTA DFU software component is added, which extends both the event handlers (see *sl_ota_dfu.c*) and the GATT database (see *ota_dfu.xml*). This makes it possible to make Over-The-Air Device-Firmware-Upgrade without any additional application code.
+1. Open **`Sunflower.slcp`** in **Simplicity Studio 6**.
+2. Use **Simplicity SDK 2026.6.2** and the **BRD4314A / BGM220P** target.
+3. Generate the project if prompted. Keep the GATT characteristic IDs above unchanged unless you also update `app.c`.
+4. Build and flash to the Explorer Kit.
+5. Connect from a BLE client. To use the directional controls, configure Uni Controller to write the specified 10-byte packets to `controller_cmd`.
 
-## Testing the SOC-Empty Application
+If the SDK Power Manager settings change, regenerate the project and test the build again. Do not edit the copied Silicon Labs SDK files directly.
 
-As described above, an empty example does nothing except advertising and letting other devices connect and read its basic GATT database. To test this feature, do the following:
+## Repository layout
 
-1. Build and flash the SoC-Empty example to your device.
-2. In case of using DFU functionality, make sure a bootloader is installed. See the [Device Firmware Update](#device-firmware-update) section.
-3. Download the **Simplicity Connect** smartphone app, available on [iOS](https://apps.apple.com/us/app/simplicity-connect/id1030932759) and [Android](https://play.google.com/store/apps/details?id=com.siliconlabs.bledemo&hl=en&gl=US).
-4. Open the app and choose the [Scan].
-   ![Simplicity Connect start scanning](image/readme_img2.png)
-5. Now you should find your device advertising as "Empty Example". Tap **Connect**.
-   ![Scan results](image/readme_img3.png)
-6. The connection is opened, and the GATT database is automatically discovered. Find the device name characteristic under Generic Access service and try to read out the device name.
-   ![GATT database of the device](image/readme_img4.png)
+```text
+Sunflower/
+├── Sunflower.slcp                # Simplicity Studio project
+├── app.c                         # Active BLE + two-servo firmware
+├── app.h
+├── app_bm.c
+├── main.c
+├── Sunflower.pintool
+├── config/
+│   └── btconf/
+│       └── gatt_configuration.btconf
+├── cmake_gcc/                    # Generated project build configuration
+├── future/                       # Inactive starter templates, not built
+│   ├── README.md
+│   ├── bluetooth_control.c
+│   ├── free_roam.c
+│   └── sun_tracking.c
+├── image/                        # Images from the original SDK example
+├── .gitignore
+└── readme.md
+```
 
-## Device Firmware Update
+The repository excludes local copies of `simplicity_sdk_*/`, `autogen/`, and `cmake_gcc/build/`. These are recreated locally and should not be manually copied into Git.
 
-This example project does not include Device Firmware Update (DFU) functionality by default, but it can be added easily.
-SoC applications can use one of Silicon Labs' Over-the-Air (OTA) DFU implementations. The table below summarizes the options:
+## Planned work
 
-|                           | In-place OTA DFU                 | Application OTA DFU                 |
-|---------------------------|----------------------------------|-------------------------------------|
-| **Component to add**      | In-place OTA DFU                 | Application OTA DFU                 |
-| **Compatible bootloader** | Bluetooth Apploader OTA DFU      | Bootloader - SoC Internal Storage (Series 2) <br> Bootloader - SoC Storage (Series 3) |
-| **Reference solution**    | Bluetooth - SoC In-Place OTA DFU | Bluetooth - SoC Application OTA DFU |
-| **Supported devices**     | Supports Series 2 devices only and requires a smaller flash size | Supports Series 2 and Series 3 devices with enough flash to store firmware images in 2 instances |
+- Refactor active servo and BLE code into reusable modules if complexity grows.
+- Add four light sensors and ADC sampling.
+- Develop closed-loop sun tracking with a deadband, safe motion limits, and one-axis-at-a-time movement where appropriate.
+- Test whether tracking energy gain exceeds movement energy cost.
+- Integrate the battery, energy-harvesting PMIC, custom PCB, and power management.
 
-To add DFU to an existing project:
-- Add the appropriate DFU component to your project using Simplicity Studio’s Software Component browser.
-- Add a post-build step to generate the GBL (Gecko Bootloader) file using Simplicity Studio’s Post Build Editor.
-- Rebuild the project.
-- Flash a compatible bootloader to the device.
+See [future/README.md](future/README.md) for the original nonfunctional starter templates. **Do not add them to the Simplicity Studio build as-is.**
 
-For more information on bootloaders, see [UG103.6: Bootloader Fundamentals](https://www.silabs.com/documents/public/user-guides/ug103-06-fundamentals-bootloading.pdf) and [UG489: Silicon Labs Gecko Bootloader User's Guide for GSDK 4.0 and Higher](https://www.silabs.com/documents/public/user-guides/ug489-gecko-bootloader-user-guide-gsdk-4.pdf).
+## Safety and reproducibility
 
-## Troubleshooting
-
-### Programming the Radio Board
-
-Before programming the radio board mounted on the mainboard, make sure the power supply switch is in the AEM position (right side) as shown below.
-
-![Radio board power supply switch](image/readme_img0.png)
-
-
-## Resources
-
-[Bluetooth Documentation](https://docs.silabs.com/bluetooth/latest/)
-
-[UG103.14: Bluetooth LE Fundamentals](https://www.silabs.com/documents/public/user-guides/ug103-14-fundamentals-ble.pdf)
-
-[QSG169: Bluetooth SDK v3.x Quick Start Guide](https://www.silabs.com/documents/public/quick-start-guides/qsg169-bluetooth-sdk-v3x-quick-start-guide.pdf)
-
-[UG434: Silicon Labs Bluetooth ® C Application Developer's Guide for SDK v3.x](https://www.silabs.com/documents/public/user-guides/ug434-bluetooth-c-soc-dev-guide-sdk-v3x.pdf)
-
-[Bluetooth Training](https://www.silabs.com/support/training/bluetooth)
-
-## Report Bugs & Get Support
-
-You are always encouraged and welcome to report any issues you found to us via [Silicon Labs Community](https://www.silabs.com/community).
+Commit the **`.slcp` descriptor and GATT `.btconf` file** whenever the Bluetooth configuration changes. Back up the project before moving or renaming it outside Simplicity Studio, and retest both servo axes after any rebuild or wiring change.
