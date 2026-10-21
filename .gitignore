@@ -1,0 +1,28 @@
+# Build outputs and CMake cache
+cmake_gcc/build/
+build/
+CMakeFiles/
+CMakeCache.txt
+*.elf
+*.hex
+*.bin
+*.map
+*.o
+*.obj
+*.d
+
+# Silicon Labs project-generated code and SDK copy
+autogen/
+simplicity_sdk_*/
+
+# Local development/editor settings
+.vscode/
+.codex/
+.projectlinkstore
+.silabsExtContext
+vscode.conf
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+*~
