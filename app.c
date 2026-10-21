@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #include "sl_bt_api.h"
 #include "sl_main_init.h"
@@ -44,6 +45,8 @@
 #define BUTTON_DOWN   0x02
 #define BUTTON_LEFT   0x04
 #define BUTTON_RIGHT  0x08
+
+static uint8_t temperatureTicks = 0;
 
 // Hardware timer frequency
 static uint32_t timerFreq;
@@ -236,6 +239,38 @@ void app_process_action(void)
     }
 
     movementDue = false;
+
+    // Read the MCU temperature once per second
+    temperatureTicks++;
+
+    if (temperatureTicks >= 20)
+    {
+        temperatureTicks = 0;
+
+        int temperatureC = (int)(
+            ((float)(EMU->TEMP & 0x7FFU) / 4.0f) - 273.15f
+        );
+
+        char temperatureText[8];
+
+        int length = snprintf(
+            temperatureText,
+            sizeof(temperatureText),
+            "%d C",
+            temperatureC
+        );
+
+        if (length > 0 &&
+            length < (int)sizeof(temperatureText))
+        {
+            sl_bt_gatt_server_write_attribute_value(
+                gattdb_chip_temperature,
+                0,
+                (size_t)length,
+                (const uint8_t *)temperatureText
+            );
+        }
+    }
 
     // Stop moving if Bluetooth commands stop arriving
     if (commandAgeMs < COMMAND_TIMEOUT_MS)

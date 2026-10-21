@@ -8,7 +8,7 @@
 
     <!--Device Name-->
     <characteristic const="false" id="device_name" name="Device Name" sourceId="org.bluetooth.characteristic.gap.device_name" uuid="2A00">
-      <value length="13" type="utf-8" variable_length="false">Empty Example</value>
+      <value length="13" type="utf-8" variable_length="false">Sunflower</value>
       <properties>
         <read authenticated="false" bonded="false" encrypted="false"/>
         <write authenticated="false" bonded="false" encrypted="false"/>
@@ -103,6 +103,14 @@
         <read authenticated="false" bonded="false" encrypted="false"/>
         <write authenticated="false" bonded="false" encrypted="false"/>
         <write_no_response authenticated="false" bonded="false" encrypted="false"/>
+      </properties>
+    </characteristic>
+
+    <!--Chip Temperature-->
+    <characteristic const="false" id="chip_temperature" name="Chip Temperature" sourceId="" uuid="77f9d9d4-6d86-43ff-bbcb-43cc19c3e3cc">
+      <value length="8" type="utf-8" variable_length="true">0C</value>
+      <properties>
+        <read authenticated="false" bonded="false" encrypted="false"/>
       </properties>
     </characteristic>
   </service>
